@@ -1,32 +1,33 @@
 import TensorFlow
 
-struct Model: Layer {
-  var conv = Conv2D<Float>(filterShape: (5, 5, 3, 6))
-  var maxpool = MaxPool2D<Float>(poolSize: (2, 2), strides: (2, 2))
-  var flatten = Flatten<Float>()
-  var dense = Dense<Float>(inputSize: 36 * 6, outputSize: 10)
+struct MLP: Layer {
+    var layer1 = Dense<Float>(inputSize: 2, outputSize: 10, activation: relu)
+    var layer2 = Dense<Float>(inputSize: 10, outputSize: 30, activation: relu)
+    var layer3 = Dense<Float>(inputSize: 30, outputSize: 10, activation: relu)
+    var layer4 = Dense<Float>(inputSize: 10, outputSize: 1, activation: relu)
 
-  @differentiable
-  func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
-    let h0 = conv(input)
-    let h1 = maxpool(h0)
-    let h2 = flatten(h1).withDerivative { print($0) }
-    return dense(h2)
-  }
+    @differentiable
+    func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+        let h1 = layer1(input)
+        let h2 = layer2(h1)
+        let h3 = layer3(h2)
+        return layer4(h3)
+    }
 }
 
-let x = Tensor<Float>(randomNormal: [10, 16, 16, 3])
-let y = Tensor<Int32>(rangeFrom: 0, to: 10, stride: 1)
+var classifier = MLP()
+let optimizer = SGD(for: classifier, learningRate: 0.02)
 
-var model = Model()
-let optimizer = SGD(for: model)
-Context.local.learningPhase = .training
+let x: Tensor<Float> = [[0, 0], [0, 1], [1, 0], [1, 1]]
+let y: Tensor<Float> = [0, 1, 1, 0]
 
-for i in 1...10 {
-  let (loss, grads) = valueWithGradient(at: model) { m -> Tensor<Float> in
-    let logits = model(x)
-    return softmaxCrossEntropy(logits: logits, labels: y)
-  }
-  print("Step \(i), loss is: \(loss)")
-  optimizer.update(&model, along: grads)
+let (loss, 𝛁model) = valueWithGradient(at: classifier) { m -> Float in
+   let ŷ = classifier(x)
+   print("ŷ =\n\(ŷ)")
+   let 𝚫y = ŷ - y
+   print("𝚫y =\n\(𝚫y)")
+   return 𝚫y.squared().mean().scalarized()
 }
+optimizer.update(&classifier, along: 𝛁model)
+
+print("Layer 4 weight:\n\(𝛁model.layer4.weight)")
